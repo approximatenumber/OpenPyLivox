@@ -2420,7 +2420,7 @@ class openpylivox(object):
 
         if self._isConnected:
             if not self._isData:
-                self._captureStream = _dataCaptureThread(self._sensorIP, self._dataSocket, "", 0, 0, 0, 0, self._showMessages, self._format_spaces, self._deviceType)
+                self._captureStream = _dataCaptureThread(self._sensorIP, self._dataSocket, "", 0, 0, 0, 0, 1, self._showMessages, self._format_spaces, self._deviceType)
                 time.sleep(0.12)
                 self._waitForIdle()
                 self._cmdSocket.sendto(self._CMD_DATA_START, (self._sensorIP, 65000))
@@ -3441,10 +3441,14 @@ def _convertBin2CSV(filePathAndName, deleteBin):
         if os.path.exists(filePathAndName) and os.path.isfile(filePathAndName):
             bin_size = Path(filePathAndName).stat().st_size - 15
             binFile = open(filePathAndName, "rb")
+            
+            path_file = Path(filePathAndName)
+            filename = path_file.stem + ".csv"
+            parent = path_file.parent
 
             checkMessage = (binFile.read(11)).decode('UTF-8')
             if checkMessage == "OPENPYLIVOX":
-                with open(filePathAndName + ".csv", "w", 1) as csvFile:
+                with open(parent / filename, "w", 1) as csvFile:
                     firmwareType = struct.unpack('<h', binFile.read(2))[0]
                     dataType = struct.unpack('<h', binFile.read(2))[0]
                     divisor = 1
@@ -3637,7 +3641,7 @@ def _convertBin2CSV(filePathAndName, deleteBin):
 
                             pbari.close()
                             binFile.close()
-                            print("   - Point data was converted successfully to CSV, see file: " + filePathAndName + ".csv")
+                            print("   - Point data was converted successfully to CSV, see file: " + str(parent / filename))
                             if deleteBin:
                                 os.remove(filePathAndName)
                                 print("     * OPL point data binary file has been deleted")
@@ -3652,9 +3656,11 @@ def _convertBin2CSV(filePathAndName, deleteBin):
 
                 # check for and convert IMU BIN data (if it exists)
                 path_file = Path(filePathAndName)
-                filename = path_file.stem
-                exten = path_file.suffix
-                IMU_file = filename + "_IMU" + exten
+                parent = path_file.parent
+                filename = path_file.stem + "_IMU" + path_file.suffix
+                IMU_file = parent / filename
+                csv_file = parent / (path_file.stem + "_IMU" + '.csv')
+
 
                 if os.path.exists(IMU_file) and os.path.isfile(IMU_file):
                     bin_size2 = Path(IMU_file).stat().st_size - 15
@@ -3663,7 +3669,7 @@ def _convertBin2CSV(filePathAndName, deleteBin):
 
                     checkMessage = (binFile2.read(15)).decode('UTF-8')
                     if checkMessage == "OPENPYLIVOX_IMU":
-                        with open(IMU_file + ".csv", "w", 1) as csvFile2:
+                        with open(csv_file, "w", 1) as csvFile2:
                             csvFile2.write("//gyro_x,gyro_y,gyro_z,acc_x,acc_y,acc_z,time\n")
                             pbari2 = tqdm(total=num_recs, unit=" records", desc="   ")
                             while True:
@@ -3686,7 +3692,7 @@ def _convertBin2CSV(filePathAndName, deleteBin):
 
                             pbari2.close()
                             binFile2.close()
-                            print("   - IMU data was converted successfully to CSV, see file: " + IMU_file + ".csv")
+                            print("   - IMU data was converted successfully to CSV, see file: " + str(csv_file) + ".csv")
                             if deleteBin:
                                 os.remove(IMU_file)
                                 print("     * OPL IMU data binary file has been deleted")
@@ -3696,9 +3702,10 @@ def _convertBin2CSV(filePathAndName, deleteBin):
             else:
                 print("*** ERROR: The file was not recognized as an OpenPyLivox binary point data file ***")
                 binFile.close()
-    except:
+    except Exception as err:
         binFile.close()
         print("*** ERROR: An unknown error occurred while converting OPL binary data ***")
+        print(err)
 
 def convertBin2CSV(filePathAndName, deleteBin=False):
     print()
