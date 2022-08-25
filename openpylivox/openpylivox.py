@@ -1351,10 +1351,12 @@ class _dataCaptureThread(object):
                                     if not IMU_reporting:
                                         IMU_reporting = True
                                         path_file = Path(self.filePathAndName)
-                                        filename = path_file.stem
                                         exten = path_file.suffix
+                                        filename = path_file.stem + "_IMU" + exten
+                                        IMU_file = open(path_file.parent / filename, "wb")
                                         IMU_file = open(filename + "_IMU" + exten, "wb")
                                         IMU_file.write(str.encode("OPENPYLIVOX_IMU"))
+                                        print("   " + self.sensorIP + self._format_spaces + "   -->     create IMU BINARY file: " + str(path_file.parent / filename))
 
                                     IMU_file.write(imu_data[bytePos:bytePos + 24])
                                     IMU_file.write(struct.pack('<d', timestamp_sec))
@@ -1598,10 +1600,11 @@ class openpylivox(object):
                 break
 
         if foundMatchIP == False:
-            print("\n* ERROR: specified sensor IP:Command Port cannot connect to a Livox sensor *")
-            print("* common causes are a wrong IP or the command port is being used already   *\n")
+            print(f"* ERROR: cannot connect to a Livox sensor: {self._sensorIP} *")
+            print("* common causes are a wrong IP or the command port is being used already *")
+            print(f"* found lidars: {lidarSensorIPs} *")
             time.sleep(0.1)
-            sys.exit(2)
+            raise SystemExit
 
         return unique_serialNums, unique_sensors, sensor_IPs
 
