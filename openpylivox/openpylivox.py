@@ -39,6 +39,27 @@ import numpy as np
 from tqdm import tqdm
 import laspy
 from deprecated import deprecated
+import logging
+import colorlog
+
+
+class Logger:
+    format = '%(log_color)s%(asctime)s %(levelname)s %(filename)s [line %(lineno)s]: %(message)s'
+    datefmt = "%d/%m %H:%M:%S"
+    formatter = colorlog.ColoredFormatter(format, datefmt=datefmt)
+    handler = logging.StreamHandler()
+    handler.setFormatter(formatter)
+
+    @classmethod
+    def get_logger(cls, name, loglevel=logging.INFO):
+        logger = logging.getLogger(name)
+        logger.addHandler(cls.handler)
+        logger.setLevel(loglevel)
+        logger.propagate = False  # See: https://stackoverflow.com/questions/6729268/log-messages-appearing-twice-with-python-logging
+        return logger
+
+
+logger = Logger.get_logger("dataset-recorder")
 
 
 class _heartbeatThread(object):
@@ -73,21 +94,21 @@ class _heartbeatThread(object):
                     if ack == "ACK (response)" and cmd_set == "General" and cmd_id == "3":
                         ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
                         if ret_code != 0:
-                            if self._showMessages: print("   " + self.IP + self._format_spaces + self._format_spaces + "   -->     incorrect heartbeat response")
+                            if self._showMessages: logger.warning("   " + self.IP + self._format_spaces + self._format_spaces + "   -->     incorrect heartbeat response")
                         else:
                             self.work_state = int.from_bytes(ret_code_bin[1], byteorder='little')
 
                             # TODO: read and store the lidar status codes from heartbeat response (right now only being read from data stream)
 
                             if self.work_state == 4:
-                                print("   " + self.IP + self._format_spaces + self._format_spaces + "   -->     *** ERROR: HEARTBEAT ERROR MESSAGE RECEIVED ***")
+                                logger.error("   " + self.IP + self._format_spaces + self._format_spaces + "   -->     *** ERROR: HEARTBEAT ERROR MESSAGE RECEIVED ***")
                                 sys.exit(0)
                     elif ack == "MSG (message)" and cmd_set == "General" and cmd_id == "7":
                         # not given an option to hide this message!!
-                        print("   " + self.IP + self._format_spaces + self._format_spaces + "   -->     *** ERROR: ABNORMAL STATUS MESSAGE RECEIVED ***")
+                        logger.error("   " + self.IP + self._format_spaces + self._format_spaces + "   -->     *** ERROR: ABNORMAL STATUS MESSAGE RECEIVED ***")
                         sys.exit(1)
                     else:
-                        if self._showMessages: print("   " + self.IP + self._format_spaces + self._format_spaces + "   -->     incorrect heartbeat response")
+                        if self._showMessages: logger.warning("   " + self.IP + self._format_spaces + self._format_spaces + "   -->     incorrect heartbeat response")
 
                 for i in range(9, -1, -1):
                     self.idle_state = i
@@ -211,7 +232,7 @@ class _dataCaptureThread(object):
                     else:
                         break
 
-                if self._showMessages: print("   " + self.sensorIP + self._format_spaces + self._format_spaces + "   -->     CAPTURING DATA...")
+                if self._showMessages: logger.debug("   " + self.sensorIP + self._format_spaces + self._format_spaces + "   -->     CAPTURING DATA...")
 
                 # duration adjustment (trying to get exactly 100,000 points / sec)
                 if self.duration != 126230400:
@@ -494,7 +515,7 @@ class _dataCaptureThread(object):
                 lenData = len(coord1s)
                 if lenData > 0:
 
-                    if self._showMessages: print(
+                    if self._showMessages: logger.debug(
                         "   " + self.sensorIP + self._format_spaces + self._format_spaces + "   -->     writing data to ASCII file: " + self.filePathAndName)
                     csvFile = open(self.filePathAndName, "w")
 
@@ -585,18 +606,18 @@ class _dataCaptureThread(object):
                     self.nullPts = nullPts
 
                     if self._showMessages:
-                        print("   " + self.sensorIP + self._format_spaces + self._format_spaces + "   -->     closed ASCII file: " + self.filePathAndName)
-                        print(
+                        logger.debug("   " + self.sensorIP + self._format_spaces + self._format_spaces + "   -->     closed ASCII file: " + self.filePathAndName)
+                        logger.debug(
                             "                    (points: " + str(numPts) + " good, " + str(nullPts) + " null, " + str(
                                 numPts + nullPts) + " total)")
                     csvFile.close()
 
                 else:
-                    if self._showMessages: print(
+                    if self._showMessages: logger.warning(
                         "   " + self.sensorIP + self._format_spaces + "   -->     WARNING: no point cloud data was captured")
 
             else:
-                if self._showMessages: print("   " + self.sensorIP + self._format_spaces + "   -->     Incorrect lidar packet version")
+                if self._showMessages: logger.warning("   " + self.sensorIP + self._format_spaces + "   -->     Incorrect lidar packet version")
 
     def run_realtime_csv(self):
 
@@ -645,7 +666,7 @@ class _dataCaptureThread(object):
                     else:
                         break
 
-                if self._showMessages: print("   " + self.sensorIP + self._format_spaces + "   -->     CAPTURING DATA...")
+                if self._showMessages: logger.debug("   " + self.sensorIP + self._format_spaces + "   -->     CAPTURING DATA...")
 
                 # duration adjustment (trying to get exactly 100,000 points / sec)
                 if self.duration != 126230400:
@@ -658,7 +679,7 @@ class _dataCaptureThread(object):
 
                 timestamp_sec = self.startTime
 
-                if self._showMessages: print(
+                if self._showMessages: logger.debug(
                     "   " + self.sensorIP + self._format_spaces + "   -->     writing real-time data to ASCII file: " + self.filePathAndName)
                 csvFile = open(self.filePathAndName, "w", 1)
 
@@ -955,13 +976,13 @@ class _dataCaptureThread(object):
                 self.nullPts = nullPts
 
                 if self._showMessages:
-                    print("   " + self.sensorIP + self._format_spaces + "   -->     closed ASCII file: " + self.filePathAndName)
-                    print("                                (points: " + str(numPts) + " good, " + str(nullPts) + " null, " + str(numPts + nullPts) + " total)")
+                    logger.debug("   " + self.sensorIP + self._format_spaces + "   -->     closed ASCII file: " + self.filePathAndName)
+                    logger.debug("                                (points: " + str(numPts) + " good, " + str(nullPts) + " null, " + str(numPts + nullPts) + " total)")
 
                 csvFile.close()
 
             else:
-                if self._showMessages: print("   " + self.sensorIP + self._format_spaces + "   -->     Incorrect lidar packet version")
+                if self._showMessages: logger.warning("   " + self.sensorIP + self._format_spaces + "   -->     Incorrect lidar packet version")
 
     def run_realtime_bin(self):
 
@@ -1020,11 +1041,11 @@ class _dataCaptureThread(object):
                     else:
                         break
 
-                if self._showMessages: print("   " + self.sensorIP + self._format_spaces + "   -->     CAPTURING DATA...")
+                if self._showMessages: logger.debug("   " + self.sensorIP + self._format_spaces + "   -->     CAPTURING DATA...")
 
                 timestamp_sec = self.startTime
 
-                if self._showMessages: print(
+                if self._showMessages: logger.debug(
                     "   " + self.sensorIP + self._format_spaces + "   -->     writing real-time data to BINARY file: " + self.filePathAndName)
                 binFile = open(self.filePathAndName, "wb")
                 IMU_file = None
@@ -1356,7 +1377,7 @@ class _dataCaptureThread(object):
                                         IMU_file = open(path_file.parent / filename, "wb")
                                         IMU_file = open(filename + "_IMU" + exten, "wb")
                                         IMU_file.write(str.encode("OPENPYLIVOX_IMU"))
-                                        print("   " + self.sensorIP + self._format_spaces + "   -->     create IMU BINARY file: " + str(path_file.parent / filename))
+                                        logger.debug("   " + self.sensorIP + self._format_spaces + "   -->     create IMU BINARY file: " + str(path_file.parent / filename))
 
                                     IMU_file.write(imu_data[bytePos:bytePos + 24])
                                     IMU_file.write(struct.pack('<d', timestamp_sec))
@@ -1376,10 +1397,10 @@ class _dataCaptureThread(object):
                 self.imu_records = imu_records
 
                 if self._showMessages:
-                    print("   " + self.sensorIP + self._format_spaces + "   -->     closed BINARY file: " + self.filePathAndName)
-                    print("                                (points: " + str(numPts) + " good, " + str(nullPts) + " null, " + str(numPts + nullPts) + " total)")
+                    logger.debug("   " + self.sensorIP + self._format_spaces + "   -->     closed BINARY file: " + self.filePathAndName)
+                    logger.debug("                                (points: " + str(numPts) + " good, " + str(nullPts) + " null, " + str(numPts + nullPts) + " total)")
                     if self._deviceType in ["Horizon", "Tele-15", "AVIA"]:
-                        print("                                (IMU records: " + str(imu_records) + ")")
+                        logger.debug("                                (IMU records: " + str(imu_records) + ")")
 
                 binFile.close()
 
@@ -1387,7 +1408,7 @@ class _dataCaptureThread(object):
                     IMU_file.close()
 
             else:
-                if self._showMessages: print("   " + self.sensorIP + self._format_spaces + "   -->     Incorrect packet version")
+                if self._showMessages: logger.warning("   " + self.sensorIP + self._format_spaces + "   -->     Incorrect packet version")
 
     def getTimestamp(self, data_pc, timestamp_type):
 
@@ -1435,26 +1456,26 @@ class _dataCaptureThread(object):
             if self._showMessages:
                 if self.system_status == 1:
                     if self.temp_status == 1:
-                        print("   " + self.sensorIP + self._format_spaces + "   -->     * WARNING: temperature *")
+                        logger.warning("   " + self.sensorIP + self._format_spaces + "   -->     * WARNING: temperature *")
                     if self.volt_status == 1:
-                        print("   " + self.sensorIP + self._format_spaces + "   -->     * WARNING: voltage *")
+                        logger.warning("   " + self.sensorIP + self._format_spaces + "   -->     * WARNING: voltage *")
                     if self.motor_status == 1:
-                        print("   " + self.sensorIP + self._format_spaces + "   -->     * WARNING: motor *")
+                        logger.warning("   " + self.sensorIP + self._format_spaces + "   -->     * WARNING: motor *")
                     if self.dirty_status == 1:
-                        print("   " + self.sensorIP + self._format_spaces + "   -->     * WARNING: dirty or blocked *")
+                        logger.warning("   " + self.sensorIP + self._format_spaces + "   -->     * WARNING: dirty or blocked *")
                     if self.device_status == 1:
-                        print("   " + self.sensorIP + self._format_spaces + "   -->     * WARNING: approaching end of service life *")
+                        logger.warning("   " + self.sensorIP + self._format_spaces + "   -->     * WARNING: approaching end of service life *")
                     if self.fan_status == 1:
-                        print("   " + self.sensorIP + self._format_spaces + "   -->     * WARNING: fan *")
+                        logger.warning("   " + self.sensorIP + self._format_spaces + "   -->     * WARNING: fan *")
                 elif self.system_status == 2:
                     if self.temp_status == 2:
-                        print("   " + self.sensorIP + self._format_spaces + "   -->     *** ERROR: TEMPERATURE ***")
+                        logger.error("   " + self.sensorIP + self._format_spaces + "   -->     *** ERROR: TEMPERATURE ***")
                     if self.volt_status == 2:
-                        print("   " + self.sensorIP + self._format_spaces + "   -->     *** ERROR: VOLTAGE ***")
+                        logger.error("   " + self.sensorIP + self._format_spaces + "   -->     *** ERROR: VOLTAGE ***")
                     if self.motor_status == 2:
-                        print("   " + self.sensorIP + self._format_spaces + "   -->     *** ERROR: MOTOR ***")
+                        logger.error("   " + self.sensorIP + self._format_spaces + "   -->     *** ERROR: MOTOR ***")
                     if self.firmware_status == 1:
-                        print("   " + self.sensorIP + self._format_spaces + "   -->     *** ERROR: ABNORMAL FIRMWARE ***")
+                        logger.error("   " + self.sensorIP + self._format_spaces + "   -->     *** ERROR: ABNORMAL FIRMWARE ***")
 
     # returns latest status Codes from within the point cloud data packet
     def statusCodes(self):
@@ -1600,9 +1621,9 @@ class openpylivox(object):
                 break
 
         if foundMatchIP == False:
-            print(f"* ERROR: cannot connect to a Livox sensor: {self._sensorIP} *")
-            print("* common causes are a wrong IP or the command port is being used already *")
-            print(f"* found lidars: {lidarSensorIPs} *")
+            logger.error(f"* ERROR: cannot connect to a Livox sensor: {self._sensorIP} *")
+            logger.error("* common causes are a wrong IP or the command port is being used already *")
+            logger.error(f"* found lidars: {lidarSensorIPs} *")
             time.sleep(0.1)
             raise SystemExit
 
@@ -1696,8 +1717,7 @@ class openpylivox(object):
 
         if self._showMessages and opt:
             for i in range(0, len(IPs)):
-                print("   Found Livox Sensor w. serial #" + Serials[i] + " at IP: " + IPs[i])
-            print()
+                logger.info("   Found Livox Sensor w. serial #" + Serials[i] + " at IP: " + IPs[i])
 
         return IPs, Serials, ipRangeCodes, sensorTypes
 
@@ -1725,7 +1745,7 @@ class openpylivox(object):
             return assignedDataPort, assignedCmdPort, assignedIMUPort
 
         except socket.error as err:
-            print(" *** ERROR: cannot bind to specified IP:Port(s), " + err)
+            logger.error(" *** ERROR: cannot bind to specified IP:Port(s), " + err)
             sys.exit(3)
 
     def _waitForIdle(self):
@@ -1746,9 +1766,9 @@ class openpylivox(object):
             if ack == "ACK (response)" and cmd_set == "General" and cmd_id == "6":
                 ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
                 if ret_code == 1:
-                    if self._showMessages: print("   " + self._sensorIP + self._format_spaces + "   -->     FAILED to disconnect")
+                    if self._showMessages: logger.error("   " + self._sensorIP + self._format_spaces + "   -->     FAILED to disconnect")
             else:
-                if self._showMessages: print("   " + self._sensorIP + self._format_spaces + "   -->     incorrect disconnect response")
+                if self._showMessages: logger.warning("   " + self._sensorIP + self._format_spaces + "   -->     incorrect disconnect response")
 
     def _rebootSensor(self):
 
@@ -1763,9 +1783,9 @@ class openpylivox(object):
             if ack == "ACK (response)" and cmd_set == "General" and cmd_id == "10":
                 ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
                 if ret_code == 1:
-                    if self._showMessages: print("   " + self._sensorIP + self._format_spaces + "   -->     FAILED to reboot")
+                    if self._showMessages: logger.error("   " + self._sensorIP + self._format_spaces + "   -->     FAILED to reboot")
             else:
-                if self._showMessages: print("   " + self._sensorIP + self._format_spaces + "   -->     incorrect reboot response")
+                if self._showMessages: logger.warning("   " + self._sensorIP + self._format_spaces + "   -->     incorrect reboot response")
 
     def _query(self):
 
@@ -1781,7 +1801,7 @@ class openpylivox(object):
             if ack == "ACK (response)" and cmd_set == "General" and cmd_id == "2":
                 ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
                 if ret_code == 1:
-                    if self._showMessages: print("   " + self._sensorIP + self._format_spaces + "   -->     FAILED to receive query results")
+                    if self._showMessages: logger.error("   " + self._sensorIP + self._format_spaces + "   -->     FAILED to receive query results")
                 elif ret_code == 0:
                     AA = str(int.from_bytes(ret_code_bin[1], byteorder='little')).zfill(2)
                     BB = str(int.from_bytes(ret_code_bin[2], byteorder='little')).zfill(2)
@@ -1789,7 +1809,7 @@ class openpylivox(object):
                     DD = str(int.from_bytes(ret_code_bin[4], byteorder='little')).zfill(2)
                     self._firmware = AA + "." + BB + "." + CC + DD
             else:
-                if self._showMessages: print("   " + self._sensorIP + self._format_spaces + "   -->     incorrect query response")
+                if self._showMessages: logger.warning("   " + self._sensorIP + self._format_spaces + "   -->     incorrect query response")
 
     def _info(self, binData):
 
@@ -1904,10 +1924,10 @@ class openpylivox(object):
                     goodData = False
             else:
                 goodData = False
-                if self._showMessages: print("CRC32 Checksum Error")
+                if self._showMessages: logger.error("CRC32 Checksum Error")
         else:
             goodData = False
-            if self._showMessages: print("CRC16 Checksum Error")
+            if self._showMessages: logger.error("CRC16 Checksum Error")
 
         return goodData, cmdMessage, dataMessage, dataID, data
 
@@ -1967,7 +1987,7 @@ class openpylivox(object):
             self._computerIP = manualComputerIP
 
         if self._computerIP:
-            print("\nUsing computer IP address: " + self._computerIP + "\n")
+            logger.debug("Using computer IP address: " + self._computerIP)
 
             lidarSensorIPs, serialNums, ipRangeCodes, sensorTypes = self._searchForSensors(False)
 
@@ -2021,18 +2041,15 @@ class openpylivox(object):
                                     numspaces += " "
                                 if last_IP_num[j] < 10:
                                     numspaces += " "
-                                IPs_mess += str(IPs_list[k]) + numspaces + "(ID: " + str(IDs_list[k]) + ")\n                 "
+                                IPs_mess += str(IPs_list[k]) + numspaces + "(ID: " + str(IDs_list[k]) + ")"
                                 break
-                    print("   *** Discovered a Livox sensor ***")
-                    print("           Type: " + unique_sensors[i])
-                    print("         Serial: " + unique_serialNums[i])
-                    print("          IP(s): " + IPs_mess)
+                    logger.info(f"Discovered a Livox sensor: type: {unique_sensors[i]}, serial: {unique_serialNums[i]}, IP: {IPs_mess}")
 
             else:
-                print("Did not discover any Livox sensors, check communication and power cables and network settings")
+                logger.critical("Did not discover any Livox sensors, check communication and power cables and network settings")
 
         else:
-            print("*** ERROR: Failed to auto determine computer IP address ***")
+            logger.error("*** ERROR: Failed to auto determine computer IP address ***")
 
     def connect(self, computerIP, sensorIP, dataPort, cmdPort, imuPort, sensor_name_override = ""):
 
@@ -2095,16 +2112,16 @@ class openpylivox(object):
                             self._heartbeat = _heartbeatThread(1, self._cmdSocket, self._sensorIP, 65000, self._CMD_HEARTBEAT, self._showMessages, self._format_spaces)
                             time.sleep(0.15)
                             self._query()
-                            if self._showMessages: print(
+                            if self._showMessages: logger.info(
                                 "Connected to the Livox " + self._deviceType + " at IP: " + self._sensorIP + " (ID: " + str(self._ipRangeCode) + ")")
                         else:
-                            if self._showMessages: print("FAILED to connect to the Livox " + self._deviceType + " at IP: " + self._sensorIP)
+                            if self._showMessages: logger.critical("FAILED to connect to the Livox " + self._deviceType + " at IP: " + self._sensorIP)
                     else:
-                        if self._showMessages: print("FAILED to connect to the Livox " + self._deviceType + " at IP: " + self._sensorIP)
+                        if self._showMessages: logger.critical("FAILED to connect to the Livox " + self._deviceType + " at IP: " + self._sensorIP)
             else:
-                if self._showMessages: print("Invalid connection parameter(s)")
+                if self._showMessages: logger.critical("Invalid connection parameter(s)")
         else:
-            if self._showMessages: print("Already connected to the Livox " + self._deviceType + " at IP: " + self._sensorIP)
+            if self._showMessages: logger.warning("Already connected to the Livox " + self._deviceType + " at IP: " + self._sensorIP)
 
         return numFound
 
@@ -2187,9 +2204,8 @@ class openpylivox(object):
 
             if len(unique_sensors) > 0 and unique_sensors[0] != "NA":
                 status_message = status_message[:-1]
-                print(status_message)
                 if self._showMessages:
-                    print("Attempting to auto-connect to the Livox " + unique_sensors[0] + " with S/N: " + unique_serialNums[0])
+                    logger.info("Attempting to auto-connect to the Livox " + unique_sensors[0] + " with S/N: " + unique_serialNums[0])
 
                 if unique_sensors[0] == "Mid-100":
                     sensor_IPs = None
@@ -2225,11 +2241,11 @@ class openpylivox(object):
                     self._deviceType = unique_sensors[0]
                     self.resetShowMessages()
 
-                    if self._showMessages: print(
+                    if self._showMessages: logger.info(
                         "Connected to the Livox " + self._deviceType + " at IP: " + self._sensorIP + " (ID: " + str(self._ipRangeCode) + ")")
 
         else:
-            if self._showMessages: print("*** ERROR: Failed to auto determine the computer IP address ***")
+            if self._showMessages: logger.error("*** ERROR: Failed to auto determine the computer IP address ***")
 
         return numFound
 
@@ -2252,12 +2268,12 @@ class openpylivox(object):
 
                 self._dataSocket.close()
                 self._cmdSocket.close()
-                if self._showMessages: print("Disconnected from the Livox " + self._deviceType + " at IP: " + self._sensorIP)
+                if self._showMessages: logger.warning("Disconnected from the Livox " + self._deviceType + " at IP: " + self._sensorIP)
 
             except:
-                if self._showMessages: print("*** Error trying to disconnect from the Livox " + self._deviceType + " at IP: " + self._sensorIP)
+                if self._showMessages: logger.error("*** Error trying to disconnect from the Livox " + self._deviceType + " at IP: " + self._sensorIP)
         else:
-            if self._showMessages: print("Not connected to the Livox " + self._deviceType + " at IP: " + self._sensorIP)
+            if self._showMessages: logger.error("Not connected to the Livox " + self._deviceType + " at IP: " + self._sensorIP)
 
     def disconnect(self):
         self._disconnect()
@@ -2283,12 +2299,12 @@ class openpylivox(object):
 
                 self._dataSocket.close()
                 self._cmdSocket.close()
-                if self._showMessages: print("Rebooting the Livox " + self._deviceType + " at IP: " + self._sensorIP)
+                if self._showMessages: logger.warning("Rebooting the Livox " + self._deviceType + " at IP: " + self._sensorIP)
 
             except:
-                if self._showMessages: print("*** Error trying to reboot from the Livox " + self._deviceType + " at IP: " + self._sensorIP)
+                if self._showMessages: logger.error("*** Error trying to reboot from the Livox " + self._deviceType + " at IP: " + self._sensorIP)
         else:
-            if self._showMessages: print("Not connected to the Livox " + self._deviceType + " at IP: " + self._sensorIP)
+            if self._showMessages: logger.error("Not connected to the Livox " + self._deviceType + " at IP: " + self._sensorIP)
 
     def reboot(self):
         self._reboot()
@@ -2300,7 +2316,7 @@ class openpylivox(object):
         if self._isConnected:
             self._waitForIdle()
             self._cmdSocket.sendto(self._CMD_LIDAR_START, (self._sensorIP, 65000))
-            if self._showMessages: print("   " + self._sensorIP + self._format_spaces + "   <--     sent lidar spin up request")
+            if self._showMessages: logger.debug("   " + self._sensorIP + self._format_spaces + "   <--     sent lidar spin up request")
 
             # check for proper response from lidar start request
             if select.select([self._cmdSocket], [], [], 0.1)[0]:
@@ -2313,14 +2329,14 @@ class openpylivox(object):
                         # if self._showMessages: print("   " + self._sensorIP + self._format_spaces + "   -->     lidar is ready")
                         # time.sleep(0.1)
                     if ret_code == 1:
-                        if self._showMessages: print("   " + self._sensorIP + self._format_spaces + "   -->     FAILED to spin up the lidar")
+                        if self._showMessages: logger.info("   " + self._sensorIP + self._format_spaces + "   -->     FAILED to spin up the lidar")
                     elif ret_code == 2:
-                        if self._showMessages: print(
+                        if self._showMessages: logger.info(
                             "   " + self._sensorIP + self._format_spaces + "   -->     lidar is spinning up, please wait...")
                 else:
-                    if self._showMessages: print("   " + self._sensorIP + self._format_spaces + "   -->     incorrect lidar spin up response")
+                    if self._showMessages: logger.error("   " + self._sensorIP + self._format_spaces + "   -->     incorrect lidar spin up response")
         else:
-            if self._showMessages: print("Not connected to Livox sensor at IP: " + self._sensorIP)
+            if self._showMessages: logger.error("Not connected to Livox sensor at IP: " + self._sensorIP)
 
     def lidarSpinUp(self):
         self._lidarSpinUp()
@@ -2343,9 +2359,9 @@ class openpylivox(object):
                     stopper = False
 
             if stopper:
-                if self._showMessages: print("   " + self._sensorIP + self._format_spaces + "   -->     lidar is ready")
+                if self._showMessages: logger.info("   " + self._sensorIP + self._format_spaces + "   -->     lidar is ready")
                 for i in range(len(self._mid100_sensors)):
-                    if self._mid100_sensors[i]._showMessages: print("   " + self._mid100_sensors[i]._sensorIP + self._mid100_sensors[i]._format_spaces + "   -->     lidar is ready")
+                    if self._mid100_sensors[i]._showMessages: loger.info("   " + self._mid100_sensors[i]._sensorIP + self._mid100_sensors[i]._format_spaces + "   -->     lidar is ready")
                 time.sleep(0.1)
                 break
 
@@ -2354,7 +2370,7 @@ class openpylivox(object):
         if self._isConnected:
             self._waitForIdle()
             self._cmdSocket.sendto(self._CMD_LIDAR_POWERSAVE, (self._sensorIP, 65000))
-            if self._showMessages: print("   " + self._sensorIP + self._format_spaces + "   <--     sent lidar spin down request")
+            if self._showMessages: logger.debug("   " + self._sensorIP + self._format_spaces + "   <--     sent lidar spin down request")
 
             # check for proper response from lidar stop request
             if select.select([self._cmdSocket], [], [], 0.1)[0]:
@@ -2364,7 +2380,7 @@ class openpylivox(object):
                 if ack == "ACK (response)" and cmd_set == "Lidar" and cmd_id == "0":
                     ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
                     if ret_code == 1:
-                        if self._showMessages: print("   " + self._sensorIP + self._format_spaces + "   -->     FAILED to spin down the lidar")
+                        if self._showMessages: logger.error("   " + self._sensorIP + self._format_spaces + "   -->     FAILED to spin down the lidar")
                     else:
                         self._isData = False
                         if self._captureStream is not None:
@@ -2373,9 +2389,9 @@ class openpylivox(object):
                         self._isWriting = False
                         time.sleep(0.1)
                 else:
-                    if self._showMessages: print("   " + self._sensorIP + self._format_spaces + "   -->     incorrect lidar spin down response")
+                    if self._showMessages: logger.error("   " + self._sensorIP + self._format_spaces + "   -->     incorrect lidar spin down response")
         else:
-            if self._showMessages: print("Not connected to Livox sensor at IP: " + self._sensorIP)
+            if self._showMessages: logger.error("Not connected to Livox sensor at IP: " + self._sensorIP)
 
     def lidarSpinDown(self):
         self._lidarSpinDown()
@@ -2387,7 +2403,7 @@ class openpylivox(object):
         if self._isConnected:
             self._waitForIdle()
             self._cmdSocket.sendto(self._CMD_LIDAR_STANDBY, (self._sensorIP, 65000))
-            if self._showMessages: print("   " + self._sensorIP + self._format_spaces + "   <--     sent lidar stand-by request")
+            if self._showMessages: logger.info("   " + self._sensorIP + self._format_spaces + "   <--     sent lidar stand-by request")
 
             # check for proper response from lidar stand-by request
             if select.select([self._cmdSocket], [], [], 0.1)[0]:
@@ -2397,7 +2413,7 @@ class openpylivox(object):
                 if ack == "ACK (response)" and cmd_set == "Lidar" and cmd_id == "0":
                     ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
                     if ret_code == 1:
-                        if self._showMessages: print("   " + self._sensorIP + self._format_spaces + "   -->     FAILED to set lidar to stand-by")
+                        if self._showMessages: logger.error("   " + self._sensorIP + self._format_spaces + "   -->     FAILED to set lidar to stand-by")
                     else:
                         self._isData = False
                         if self._captureStream is not None:
@@ -2406,9 +2422,9 @@ class openpylivox(object):
                         self._isWriting = False
                         time.sleep(0.1)
                 else:
-                    if self._showMessages: print("   " + self._sensorIP + self._format_spaces + "   -->     incorrect lidar stand-by response")
+                    if self._showMessages: logger.error("   " + self._sensorIP + self._format_spaces + "   -->     incorrect lidar stand-by response")
         else:
-            if self._showMessages: print("Not connected to Livox sensor at IP: " + self._sensorIP)
+            if self._showMessages: logger.error("Not connected to Livox sensor at IP: " + self._sensorIP)
 
     def lidarStandBy(self):
         self._lidarStandBy()
@@ -2424,7 +2440,7 @@ class openpylivox(object):
                 time.sleep(0.12)
                 self._waitForIdle()
                 self._cmdSocket.sendto(self._CMD_DATA_START, (self._sensorIP, 65000))
-                if self._showMessages: print("   " + self._sensorIP + self._format_spaces + "   <--     sent start data stream request")
+                if self._showMessages: logger.info("   " + self._sensorIP + self._format_spaces + "   <--     sent start data stream request")
 
                 # check for proper response from data start request
                 if select.select([self._cmdSocket], [], [], 0.1)[0]:
@@ -2434,7 +2450,7 @@ class openpylivox(object):
                     if ack == "ACK (response)" and cmd_set == "General" and cmd_id == "4":
                         ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
                         if ret_code == 1:
-                            if self._showMessages: print("   " + self._sensorIP + self._format_spaces + "   -->     FAILED to start data stream")
+                            if self._showMessages: logger.error("   " + self._sensorIP + self._format_spaces + "   -->     FAILED to start data stream")
                             if self._captureStream is not None:
                                 self._captureStream.stop()
                             time.sleep(0.1)
@@ -2443,11 +2459,11 @@ class openpylivox(object):
                             self._isData = True
                     else:
                         if self._showMessages:
-                            print("   " + self._sensorIP + self._format_spaces + "   -->     incorrect start data stream response")
+                            logger.error("   " + self._sensorIP + self._format_spaces + "   -->     incorrect start data stream response")
             else:
-                if self._showMessages: print("   " + self._sensorIP + self._format_spaces + "   -->     data stream already started")
+                if self._showMessages: logger.warning("   " + self._sensorIP + self._format_spaces + "   -->     data stream already started")
         else:
-            if self._showMessages: print("Not connected to Livox sensor at IP: " + self._sensorIP)
+            if self._showMessages: logger.error("Not connected to Livox sensor at IP: " + self._sensorIP)
 
     def _dataStart_RT(self):
 
@@ -2457,7 +2473,7 @@ class openpylivox(object):
                 time.sleep(0.12)
                 self._waitForIdle()
                 self._cmdSocket.sendto(self._CMD_DATA_START, (self._sensorIP, 65000))
-                if self._showMessages: print("   " + self._sensorIP + self._format_spaces + "   <--     sent start data stream request")
+                if self._showMessages: logger.info("   " + self._sensorIP + self._format_spaces + "   <--     sent start data stream request")
 
                 # check for proper response from data start request
                 if select.select([self._cmdSocket], [], [], 0.1)[0]:
@@ -2467,7 +2483,7 @@ class openpylivox(object):
                     if ack == "ACK (response)" and cmd_set == "General" and cmd_id == "4":
                         ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
                         if ret_code == 1:
-                            if self._showMessages: print("   " + self._sensorIP + self._format_spaces + "   -->     FAILED to start data stream")
+                            if self._showMessages: logger.error("   " + self._sensorIP + self._format_spaces + "   -->     FAILED to start data stream")
                             if self._captureStream is not None:
                                 self._captureStream.stop()
                             time.sleep(0.1)
@@ -2475,11 +2491,11 @@ class openpylivox(object):
                         else:
                             self._isData = True
                     else:
-                        if self._showMessages: print("   " + self._sensorIP + self._format_spaces + "   -->     incorrect start data stream response")
+                        if self._showMessages: logger.error("   " + self._sensorIP + self._format_spaces + "   -->     incorrect start data stream response")
             else:
-                if self._showMessages: print("   " + self._sensorIP + self._format_spaces + "   -->     data stream already started")
+                if self._showMessages: logger.warning("   " + self._sensorIP + self._format_spaces + "   -->     data stream already started")
         else:
-            if self._showMessages: print("Not connected to Livox sensor at IP: " + self._sensorIP)
+            if self._showMessages: logger.error("Not connected to Livox sensor at IP: " + self._sensorIP)
 
     @deprecated(version='1.1.0', reason="You should use .dataStart_RT_B() instead")
     def dataStart_RT(self):
@@ -2495,7 +2511,7 @@ class openpylivox(object):
                 time.sleep(0.12)
                 self._waitForIdle()
                 self._cmdSocket.sendto(self._CMD_DATA_START, (self._sensorIP, 65000))
-                if self._showMessages: print("   " + self._sensorIP + self._format_spaces + "   <--     sent start data stream request")
+                if self._showMessages: logger.info("   " + self._sensorIP + self._format_spaces + "   <--     sent start data stream request")
 
                 # check for proper response from data start request
                 if select.select([self._cmdSocket], [], [], 0.1)[0]:
@@ -2505,7 +2521,7 @@ class openpylivox(object):
                     if ack == "ACK (response)" and cmd_set == "General" and cmd_id == "4":
                         ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
                         if ret_code == 1:
-                            if self._showMessages: print("   " + self._sensorIP + self._format_spaces + "   -->     FAILED to start data stream")
+                            if self._showMessages: logger.error("   " + self._sensorIP + self._format_spaces + "   -->     FAILED to start data stream")
                             if self._captureStream is not None:
                                 self._captureStream.stop()
                             time.sleep(0.1)
@@ -2513,11 +2529,11 @@ class openpylivox(object):
                         else:
                             self._isData = True
                     else:
-                        if self._showMessages: print("   " + self._sensorIP + self._format_spaces + "   -->     incorrect start data stream response")
+                        if self._showMessages: logger.error("   " + self._sensorIP + self._format_spaces + "   -->     incorrect start data stream response")
             else:
-                if self._showMessages: print("   " + self._sensorIP + self._format_spaces + "   -->     data stream already started")
+                if self._showMessages: logger.warning("   " + self._sensorIP + self._format_spaces + "   -->     data stream already started")
         else:
-            if self._showMessages: print("Not connected to Livox sensor at IP: " + self._sensorIP)
+            if self._showMessages: logger.error("Not connected to Livox sensor at IP: " + self._sensorIP)
 
     def dataStart_RT_B(self):
         self._dataStart_RT_B()
@@ -2530,7 +2546,7 @@ class openpylivox(object):
             if self._isData:
                 self._waitForIdle()
                 self._cmdSocket.sendto(self._CMD_DATA_STOP, (self._sensorIP, 65000))
-                if self._showMessages: print("   " + self._sensorIP + self._format_spaces + "   <--     sent stop data stream request")
+                if self._showMessages: logger.info("   " + self._sensorIP + self._format_spaces + "   <--     sent stop data stream request")
 
                 # check for proper response from data stop request
                 if select.select([self._cmdSocket], [], [], 0.1)[0]:
@@ -2540,7 +2556,7 @@ class openpylivox(object):
                     if ack == "ACK (response)" and cmd_set == "General" and cmd_id == "4":
                         ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
                         if ret_code == 1:
-                            if self._showMessages: print("   " + self._sensorIP + self._format_spaces + "   -->     FAILED to stop data stream")
+                            if self._showMessages: logger.error("   " + self._sensorIP + self._format_spaces + "   -->     FAILED to stop data stream")
                         else:
                             self._isData = False
                             if self._captureStream is not None:
@@ -2549,11 +2565,11 @@ class openpylivox(object):
                             self._isWriting = False
                             time.sleep(0.1)
                     else:
-                        if self._showMessages: print("   " + self._sensorIP + self._format_spaces + "   -->     incorrect stop data stream response")
+                        if self._showMessages: logger.error("   " + self._sensorIP + self._format_spaces + "   -->     incorrect stop data stream response")
             else:
-                if self._showMessages: print("   " + self._sensorIP + self._format_spaces + "   -->     data stream already stopped")
+                if self._showMessages: logger.warning("   " + self._sensorIP + self._format_spaces + "   -->     data stream already stopped")
         else:
-            if self._showMessages: print("Not connected to Livox sensor at IP: " + self._sensorIP)
+            if self._showMessages: logger.error("Not connected to Livox sensor at IP: " + self._sensorIP)
 
     def dataStop(self):
         self._dataStop()
@@ -2574,18 +2590,18 @@ class openpylivox(object):
                 if ack == "ACK (response)" and cmd_set == "General" and cmd_id == "8":
                     ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
                     if ret_code == 0:
-                        if self._showMessages: print("Changed IP from " + self._sensorIP + " to dynamic IP (DHCP assigned)")
+                        if self._showMessages: logger.warning("Changed IP from " + self._sensorIP + " to dynamic IP (DHCP assigned)")
                         self.disconnect()
 
-                        if self._showMessages: print("\n********** PROGRAM ENDED - MUST REBOOT SENSOR **********\n")
+                        if self._showMessages: logger.warning("\n********** PROGRAM ENDED - MUST REBOOT SENSOR **********\n")
                         sys.exit(4)
                     else:
-                        if self._showMessages: print("   " + self._sensorIP + self._format_spaces + "   -->     FAILED to change to dynamic IP (DHCP assigned)")
+                        if self._showMessages: logger.error("   " + self._sensorIP + self._format_spaces + "   -->     FAILED to change to dynamic IP (DHCP assigned)")
                 else:
-                    if self._showMessages: print("   " + self._sensorIP + self._format_spaces + "   -->     FAILED to change to dynamic IP (DHCP assigned)")
+                    if self._showMessages: logger.error("   " + self._sensorIP + self._format_spaces + "   -->     FAILED to change to dynamic IP (DHCP assigned)")
 
         else:
-            if self._showMessages: print("Not connected to Livox sensor at IP: " + self._sensorIP)
+            if self._showMessages: logger.error("Not connected to Livox sensor at IP: " + self._sensorIP)
 
     def setStaticIP(self, ipAddress):
 
@@ -2625,29 +2641,29 @@ class openpylivox(object):
                         ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
 
                         if ret_code == 0:
-                            if self._showMessages: print("Changed IP from " + self._sensorIP + " to a static IP of " + formattedIP)
+                            if self._showMessages: logger.warning("Changed IP from " + self._sensorIP + " to a static IP of " + formattedIP)
                             self.disconnect()
 
-                            if self._showMessages: print("\n********** PROGRAM ENDED - MUST REBOOT SENSOR **********\n")
+                            if self._showMessages: logger.warning("\n********** PROGRAM ENDED - MUST REBOOT SENSOR **********\n")
                             sys.exit(5)
                         else:
-                            if self._showMessages: print(
+                            if self._showMessages: logger.error(
                                 "   " + self._sensorIP + self._format_spaces + "   -->     FAILED to change static IP (must be " + ipRange + ")")
                     else:
-                        if self._showMessages: print(
+                        if self._showMessages: logger.error(
                             "   " + self._sensorIP + self._format_spaces + "   -->     FAILED to change static IP (must be " + ipRange + ")")
             else:
-                if self._showMessages: print(
+                if self._showMessages: logger.error(
                     "   " + self._sensorIP + self._format_spaces + "   -->     FAILED to change static IP (must be " + ipRange + ")")
         else:
-            if self._showMessages: print("Not connected to Livox sensor at IP: " + self._sensorIP)
+            if self._showMessages: logger.error("Not connected to Livox sensor at IP: " + self._sensorIP)
 
     def _setCartesianCS(self):
 
         if self._isConnected:
             self._waitForIdle()
             self._cmdSocket.sendto(self._CMD_CARTESIAN_CS, (self._sensorIP, 65000))
-            if self._showMessages: print("   " + self._sensorIP + self._format_spaces + "   <--     sent change to Cartesian coordinates request")
+            if self._showMessages: logger.info("   " + self._sensorIP + self._format_spaces + "   <--     sent change to Cartesian coordinates request")
 
             # check for proper response from change coordinate system request
             if select.select([self._cmdSocket], [], [], 0.1)[0]:
@@ -2657,15 +2673,15 @@ class openpylivox(object):
                 if ack == "ACK (response)" and cmd_set == "General" and cmd_id == "5":
                     ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
                     if ret_code == 1:
-                        if self._showMessages: print(
+                        if self._showMessages: logger.error(
                             "   " + self._sensorIP + self._format_spaces + "   -->     FAILED to set Cartesian coordinate output")
                     elif ret_code == 0:
                         self._coordSystem = 0
                 else:
-                    if self._showMessages: print(
+                    if self._showMessages: logger.error(
                         "   " + self._sensorIP + self._format_spaces + "   -->     incorrect change coordinate system response (Cartesian)")
         else:
-            if self._showMessages: print("Not connected to Livox sensor at IP: " + self._sensorIP)
+            if self._showMessages: logger.error("Not connected to Livox sensor at IP: " + self._sensorIP)
 
     def setCartesianCS(self):
         self._setCartesianCS()
@@ -2677,7 +2693,7 @@ class openpylivox(object):
         if self._isConnected:
             self._waitForIdle()
             self._cmdSocket.sendto(self._CMD_SPHERICAL_CS, (self._sensorIP, 65000))
-            if self._showMessages: print("   " + self._sensorIP + self._format_spaces + "   <--     sent change to Spherical coordinates request")
+            if self._showMessages: logger.warning("   " + self._sensorIP + self._format_spaces + "   <--     sent change to Spherical coordinates request")
 
             # check for proper response from change coordinate system request
             if select.select([self._cmdSocket], [], [], 0.1)[0]:
@@ -2687,15 +2703,15 @@ class openpylivox(object):
                 if ack == "ACK (response)" and cmd_set == "General" and cmd_id == "5":
                     ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
                     if ret_code == 1:
-                        if self._showMessages: print(
+                        if self._showMessages: logger.error(
                             "   " + self._sensorIP + self._format_spaces + "   -->     FAILED to set Spherical coordinate output")
                     elif ret_code == 0:
                         self._coordSystem = 1
                 else:
-                    if self._showMessages: print(
+                    if self._showMessages: logger.error(
                         "   " + self._sensorIP + self._format_spaces + "   -->     incorrect change coordinate system response (Spherical)")
         else:
-            if self._showMessages: print("Not connected to Livox sensor at IP: " + self._sensorIP)
+            if self._showMessages: logger.error("Not connected to Livox sensor at IP: " + self._sensorIP)
 
     def setSphericalCS(self):
         self._setSphericalCS()
@@ -2707,7 +2723,7 @@ class openpylivox(object):
         if self._isConnected:
             self._waitForIdle()
             self._cmdSocket.sendto(self._CMD_READ_EXTRINSIC, (self._sensorIP, 65000))
-            if self._showMessages: print("   " + self._sensorIP + self._format_spaces + "   <--     sent read extrinsic parameters request")
+            if self._showMessages: logger.info("   " + self._sensorIP + self._format_spaces + "   <--     sent read extrinsic parameters request")
 
             # check for proper response from read extrinsics request
             if select.select([self._cmdSocket], [], [], 0.1)[0]:
@@ -2717,7 +2733,7 @@ class openpylivox(object):
                 if ack == "ACK (response)" and cmd_set == "Lidar" and cmd_id == "2":
                     ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
                     if ret_code == 1:
-                        if self._showMessages: print("   " + self._sensorIP + self._format_spaces + "   -->     FAILED to read extrinsic parameters")
+                        if self._showMessages: logger.error("   " + self._sensorIP + self._format_spaces + "   -->     FAILED to read extrinsic parameters")
                     elif ret_code == 0:
                         roll = struct.unpack('<f', binData[12:16])[0]
                         pitch = struct.unpack('<f', binData[16:20])[0]
@@ -2736,16 +2752,16 @@ class openpylivox(object):
                         # called only to print the extrinsic parameters to the screen if .showMessages(True)
                         ack = self.extrinsicParameters()
                 else:
-                    if self._showMessages: print("   " + self._sensorIP + self._format_spaces + "   -->     incorrect read extrinsics response")
+                    if self._showMessages: logger.error("   " + self._sensorIP + self._format_spaces + "   -->     incorrect read extrinsics response")
         else:
-            if self._showMessages: print("Not connected to Livox sensor at IP: " + self._sensorIP)
+            if self._showMessages: logger.error("Not connected to Livox sensor at IP: " + self._sensorIP)
 
     def setExtrinsicToZero(self):
 
         if self._isConnected:
             self._waitForIdle()
             self._cmdSocket.sendto(self._CMD_WRITE_ZERO_EO, (self._sensorIP, 65000))
-            if self._showMessages: print("   " + self._sensorIP + self._format_spaces + "   <--     sent set extrinsic parameters to zero request")
+            if self._showMessages: logger.info("   " + self._sensorIP + self._format_spaces + "   <--     sent set extrinsic parameters to zero request")
 
             # check for proper response from write extrinsics request
             if select.select([self._cmdSocket], [], [], 0.1)[0]:
@@ -2755,15 +2771,15 @@ class openpylivox(object):
                 if ack == "ACK (response)" and cmd_set == "Lidar" and cmd_id == "1":
                     ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
                     if ret_code == 1:
-                        if self._showMessages: print(
+                        if self._showMessages: logger.error(
                             "   " + self._sensorIP + self._format_spaces + "   -->     FAILED to set extrinsic parameters to zero")
                     elif ret_code == 0:
                         self.readExtrinsic()
                 else:
-                    if self._showMessages: print(
+                    if self._showMessages: logger.error(
                         "   " + self._sensorIP + self._format_spaces + "   -->     incorrect set extrinsics to zero response")
         else:
-            if self._showMessages: print("Not connected to Livox sensor at IP: " + self._sensorIP)
+            if self._showMessages: logger.error("Not connected to Livox sensor at IP: " + self._sensorIP)
 
     def setExtrinsicTo(self, x, y, z, roll, pitch, yaw):
 
@@ -2779,7 +2795,7 @@ class openpylivox(object):
 
             except:
                 goodValues = False
-                if self._showMessages: print(
+                if self._showMessages: logger.error(
                     "*** Error - one or more of the extrinsic values specified are not of the correct type ***")
 
             if goodValues:
@@ -2799,7 +2815,7 @@ class openpylivox(object):
 
                 self._waitForIdle()
                 self._cmdSocket.sendto(setExtValues, (self._sensorIP, 65000))
-                if self._showMessages: print("   " + self._sensorIP + self._format_spaces + "   <--     sent set extrinsic parameters request")
+                if self._showMessages: logger.info("   " + self._sensorIP + self._format_spaces + "   <--     sent set extrinsic parameters request")
 
                 # check for proper response from write extrinsics request
                 if select.select([self._cmdSocket], [], [], 0.1)[0]:
@@ -2809,15 +2825,15 @@ class openpylivox(object):
                     if ack == "ACK (response)" and cmd_set == "Lidar" and cmd_id == "1":
                         ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
                         if ret_code == 1:
-                            if self._showMessages: print(
+                            if self._showMessages: logger.error(
                                 "   " + self._sensorIP + self._format_spaces + "   -->     FAILED to set extrinsic parameters")
                         elif ret_code == 0:
                             self.readExtrinsic()
                     else:
-                        if self._showMessages: print(
+                        if self._showMessages: logger.error(
                             "   " + self._sensorIP + self._format_spaces + "   -->     incorrect set extrinsic parameters response")
         else:
-            if self._showMessages: print("Not connected to Livox sensor at IP: " + self._sensorIP)
+            if self._showMessages: logger.error("Not connected to Livox sensor at IP: " + self._sensorIP)
 
     def _updateUTC(self, year, month, day, hour, microsec):
 
@@ -2859,7 +2875,7 @@ class openpylivox(object):
 
             self._waitForIdle()
             self._cmdSocket.sendto(setUTCValues, (self._sensorIP, 65000))
-            if self._showMessages: print("   " + self._sensorIP + self._format_spaces + "   <--     sent update UTC request")
+            if self._showMessages: logger.info("   " + self._sensorIP + self._format_spaces + "   <--     sent update UTC request")
 
             # check for proper response from update UTC request
             if select.select([self._cmdSocket], [], [], 0.1)[0]:
@@ -2869,13 +2885,13 @@ class openpylivox(object):
                 if ack == "ACK (response)" and cmd_set == "Lidar" and cmd_id == "10":
                     ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
                     if ret_code == 1:
-                        if self._showMessages: print(
+                        if self._showMessages: logger.error(
                             "   " + self._sensorIP + self._format_spaces + "   -->     FAILED to update UTC values")
                 else:
-                    if self._showMessages: print(
+                    if self._showMessages: logger.error(
                         "   " + self._sensorIP + self._format_spaces + "   -->     incorrect update UTC values response")
         else:
-            if self._showMessages: print("Not connected to Livox sensor at IP: " + self._sensorIP)
+            if self._showMessages: logger.error("Not connected to Livox sensor at IP: " + self._sensorIP)
 
     def updateUTC(self, year, month, day, hour, microsec):
         self._updateUTC(year, month, day, hour, microsec)
@@ -2888,10 +2904,10 @@ class openpylivox(object):
             self._waitForIdle()
             if OnOff:
                 self._cmdSocket.sendto(self._CMD_RAIN_FOG_ON, (self._sensorIP, 65000))
-                if self._showMessages: print("   " + self._sensorIP + self._format_spaces + "   <--     sent turn on rain/fog suppression request")
+                if self._showMessages: logger.info("   " + self._sensorIP + self._format_spaces + "   <--     sent turn on rain/fog suppression request")
             else:
                 self._cmdSocket.sendto(self._CMD_RAIN_FOG_OFF, (self._sensorIP, 65000))
-                if self._showMessages: print("   " + self._sensorIP + self._format_spaces + "   <--     sent turn off rain/fog suppression request")
+                if self._showMessages: logger.info("   " + self._sensorIP + self._format_spaces + "   <--     sent turn off rain/fog suppression request")
 
             # check for proper response from change rain/fog suppression request
             if select.select([self._cmdSocket], [], [], 0.1)[0]:
@@ -2901,13 +2917,13 @@ class openpylivox(object):
                 if ack == "ACK (response)" and cmd_set == "Lidar" and cmd_id == "3":
                     ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
                     if ret_code == 1:
-                        if self._showMessages: print(
+                        if self._showMessages: logger.error(
                             "   " + self._sensorIP + self._format_spaces + "   -->     FAILED to set rain/fog suppression value")
                 else:
-                    if self._showMessages: print(
+                    if self._showMessages: logger.error(
                         "   " + self._sensorIP + self._format_spaces + "   -->     incorrect set rain/fog suppression response")
         else:
-            if self._showMessages: print("Not connected to Livox sensor at IP: " + self._sensorIP)
+            if self._showMessages: logger.error("Not connected to Livox sensor at IP: " + self._sensorIP)
 
     def setRainFogSuppression(self, OnOff):
         self._setRainFogSuppression(OnOff)
@@ -2920,10 +2936,10 @@ class openpylivox(object):
             self._waitForIdle()
             if OnOff:
                 self._cmdSocket.sendto(self._CMD_FAN_ON, (self._sensorIP, 65000))
-                if self._showMessages: print("   " + self._sensorIP + self._format_spaces + "   <--     sent turn on fan request")
+                if self._showMessages: logger.info("   " + self._sensorIP + self._format_spaces + "   <--     sent turn on fan request")
             else:
                 self._cmdSocket.sendto(self._CMD_FAN_OFF, (self._sensorIP, 65000))
-                if self._showMessages: print("   " + self._sensorIP + self._format_spaces + "   <--     sent turn off fan request")
+                if self._showMessages: logger.info("   " + self._sensorIP + self._format_spaces + "   <--     sent turn off fan request")
 
             # check for proper response from change fan request
             if select.select([self._cmdSocket], [], [], 0.1)[0]:
@@ -2933,13 +2949,13 @@ class openpylivox(object):
                 if ack == "ACK (response)" and cmd_set == "Lidar" and cmd_id == "4":
                     ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
                     if ret_code == 1:
-                        if self._showMessages: print(
+                        if self._showMessages: logger.error(
                             "   " + self._sensorIP + self._format_spaces + "   -->     FAILED to set fan value")
                 else:
-                    if self._showMessages: print(
+                    if self._showMessages: logger.error(
                         "   " + self._sensorIP + self._format_spaces + "   -->     incorrect set fan response")
         else:
-            if self._showMessages: print("Not connected to Livox sensor at IP: " + self._sensorIP)
+            if self._showMessages: logger.error("Not connected to Livox sensor at IP: " + self._sensorIP)
 
     def setFan(self, OnOff):
         self._setFan(OnOff)
@@ -2952,7 +2968,7 @@ class openpylivox(object):
             self._waitForIdle()
 
             self._cmdSocket.sendto(self._CMD_GET_FAN, (self._sensorIP, 65000))
-            if self._showMessages: print("   " + self._sensorIP + self._format_spaces + "   <--     sent get fan state request")
+            if self._showMessages: logger.info("   " + self._sensorIP + self._format_spaces + "   <--     sent get fan state request")
 
             # check for proper response from get fan request
             if select.select([self._cmdSocket], [], [], 0.1)[0]:
@@ -2962,16 +2978,16 @@ class openpylivox(object):
                 if ack == "ACK (response)" and cmd_set == "Lidar" and cmd_id == "5":
                     ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
                     if ret_code == 1:
-                        if self._showMessages: print(
+                        if self._showMessages: logger.error(
                             "   " + self._sensorIP + self._format_spaces + "   -->     FAILED to get fan state value")
                     elif ret_code == 0:
                         value = struct.unpack('<B', binData[12:13])[0]
-                        print("   " + self._sensorIP + self._format_spaces + "   -->     fan state: " + str(value))
+                        logger.error("   " + self._sensorIP + self._format_spaces + "   -->     fan state: " + str(value))
                 else:
-                    if self._showMessages: print(
+                    if self._showMessages: logger.error(
                         "   " + self._sensorIP + self._format_spaces + "   -->     incorrect get fan state response")
         else:
-            if self._showMessages: print("Not connected to Livox sensor at IP: " + self._sensorIP)
+            if self._showMessages: logger.error("Not connected to Livox sensor at IP: " + self._sensorIP)
 
     def getFan(self):
         self._getFan()
@@ -2985,15 +3001,15 @@ class openpylivox(object):
             # single first return
             if Mode_ID == 0:
                 self._cmdSocket.sendto(self._CMD_LIDAR_SINGLE_1ST, (self._sensorIP, 65000))
-                if self._showMessages: print("   " + self._sensorIP + self._format_spaces + "   <--     sent single first return lidar mode request")
+                if self._showMessages: logger.info("   " + self._sensorIP + self._format_spaces + "   <--     sent single first return lidar mode request")
             # single strongest return
             elif Mode_ID == 1:
                 self._cmdSocket.sendto(self._CMD_LIDAR_SINGLE_STRONGEST, (self._sensorIP, 65000))
-                if self._showMessages: print("   " + self._sensorIP + self._format_spaces + "   <--     sent single strongest return lidar mode request")
+                if self._showMessages: logger.info("   " + self._sensorIP + self._format_spaces + "   <--     sent single strongest return lidar mode request")
             # dual returns
             elif Mode_ID == 2:
                 self._cmdSocket.sendto(self._CMD_LIDAR_DUAL, (self._sensorIP, 65000))
-                if self._showMessages: print("   " + self._sensorIP + self._format_spaces + "   <--     sent dual return lidar mode request")
+                if self._showMessages: logger.info("   " + self._sensorIP + self._format_spaces + "   <--     sent dual return lidar mode request")
 
             # check for proper response from change lidar mode request
             if select.select([self._cmdSocket], [], [], 0.1)[0]:
@@ -3003,13 +3019,13 @@ class openpylivox(object):
                 if ack == "ACK (response)" and cmd_set == "Lidar" and cmd_id == "6":
                     ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
                     if ret_code == 1:
-                        if self._showMessages: print(
+                        if self._showMessages: logger.error(
                             "   " + self._sensorIP + self._format_spaces + "   -->     FAILED to set lidar mode value")
                 else:
-                    if self._showMessages: print(
+                    if self._showMessages: logger.error(
                         "   " + self._sensorIP + self._format_spaces + "   -->     incorrect set lidar mode response")
         else:
-            if self._showMessages: print("Not connected to Livox sensor at IP: " + self._sensorIP)
+            if self._showMessages: logger.error("Not connected to Livox sensor at IP: " + self._sensorIP)
 
     def setIMUdataPush(self, OnOff):
 
@@ -3018,10 +3034,10 @@ class openpylivox(object):
 
             if OnOff:
                 self._cmdSocket.sendto(self._CMD_IMU_DATA_ON, (self._sensorIP, 65000))
-                if self._showMessages: print("   " + self._sensorIP + self._format_spaces + "   <--     sent start IMU data push request")
+                if self._showMessages: logger.info("   " + self._sensorIP + self._format_spaces + "   <--     sent start IMU data push request")
             else:
                 self._cmdSocket.sendto(self._CMD_IMU_DATA_OFF, (self._sensorIP, 65000))
-                if self._showMessages: print("   " + self._sensorIP + self._format_spaces + "   <--     sent stop IMU data push request")
+                if self._showMessages: logger.info("   " + self._sensorIP + self._format_spaces + "   <--     sent stop IMU data push request")
 
             # check for proper response from start/start IMU data push request
             if select.select([self._cmdSocket], [], [], 0.1)[0]:
@@ -3031,13 +3047,13 @@ class openpylivox(object):
                 if ack == "ACK (response)" and cmd_set == "Lidar" and cmd_id == "8":
                     ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
                     if ret_code == 1:
-                        if self._showMessages: print(
+                        if self._showMessages: logger.error(
                             "   " + self._sensorIP + self._format_spaces + "   -->     FAILED to set IMU data push value")
                 else:
-                    if self._showMessages: print(
+                    if self._showMessages: logger.error(
                         "   " + self._sensorIP + self._format_spaces + "   -->     incorrect set IMU data push response")
         else:
-            if self._showMessages: print("Not connected to Livox sensor at IP: " + self._sensorIP)
+            if self._showMessages: logger.error("Not connected to Livox sensor at IP: " + self._sensorIP)
 
     def getIMUdataPush(self):
 
@@ -3045,7 +3061,7 @@ class openpylivox(object):
             self._waitForIdle()
 
             self._cmdSocket.sendto(self._CMD_GET_IMU, (self._sensorIP, 65000))
-            if self._showMessages: print("   " + self._sensorIP + self._format_spaces + "   <--     sent get IMU push state request")
+            if self._showMessages: logger.info("   " + self._sensorIP + self._format_spaces + "   <--     sent get IMU push state request")
 
             # check for proper response from get IMU request
             if select.select([self._cmdSocket], [], [], 0.1)[0]:
@@ -3055,16 +3071,16 @@ class openpylivox(object):
                 if ack == "ACK (response)" and cmd_set == "Lidar" and cmd_id == "9":
                     ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
                     if ret_code == 1:
-                        if self._showMessages: print(
+                        if self._showMessages: logger.error(
                             "   " + self._sensorIP + self._format_spaces + "   -->     FAILED to get IMU push state value")
                     elif ret_code == 0:
                         value = struct.unpack('<B', binData[12:13])[0]
-                        print("   " + self._sensorIP + self._format_spaces + "   -->     IMU push state: " + str(value))
+                        logger.debug("   " + self._sensorIP + self._format_spaces + "   -->     IMU push state: " + str(value))
                 else:
-                    if self._showMessages: print(
+                    if self._showMessages: logger.error(
                         "   " + self._sensorIP + self._format_spaces + "   -->     incorrect get IMU push state response")
         else:
-            if self._showMessages: print("Not connected to Livox sensor at IP: " + self._sensorIP)
+            if self._showMessages: logger.error("Not connected to Livox sensor at IP: " + self._sensorIP)
 
 
     @deprecated(version='1.0.2', reason="You should use saveDataToFile instead")
@@ -3079,27 +3095,27 @@ class openpylivox(object):
                         firmwareType = 1
 
                     if duration < 0:
-                        if self._showMessages: print(
+                        if self._showMessages: logger.warning(
                             "   " + self._sensorIP + self._format_spaces + "   -->     * ISSUE: saving data, negative duration")
                     else:
                         # max duration = 4 years - 1 sec
                         if duration >= 126230400:
-                            if self._showMessages: print(
+                            if self._showMessages: logger.warning(
                                 "   " + self._sensorIP + self._format_spaces + "   -->     * ISSUE: saving data, duration too big")
                         else:
 
                             if secsToWait < 0:
-                                if self._showMessages: print(
+                                if self._showMessages: logger.warning(
                                     "   " + self._sensorIP + self._format_spaces + "   -->     * ISSUE: saving data, negative time to wait")
                             else:
                                 # max time to wait = 15 mins
                                 if secsToWait > 900:
-                                    if self._showMessages: print(
+                                    if self._showMessages: logger.warning(
                                         "   " + self._sensorIP + self._format_spaces + "   -->     * ISSUE: saving data, time to wait too big")
                                 else:
 
                                     if filePathAndName == "":
-                                        if self._showMessages: print(
+                                        if self._showMessages: logger.warning(
                                             "   " + self._sensorIP + self._format_spaces + "   -->     * ISSUE: saving data, file path and name missing")
                                     else:
 
@@ -3115,9 +3131,9 @@ class openpylivox(object):
                                         time.sleep(0.1)
                                         self._captureStream.isCapturing = True
                 else:
-                    if self._showMessages: print("   " + self._sensorIP + self._format_spaces + "   -->     unknown firmware version")
+                    if self._showMessages: logger.warning("   " + self._sensorIP + self._format_spaces + "   -->     unknown firmware version")
             else:
-                if self._showMessages: print(
+                if self._showMessages: logger.warning(
                     "   " + self._sensorIP + self._format_spaces + "   -->     WARNING: data stream not started, no CSV file created")
 
     @deprecated(version='1.0.2', reason="You should use closeFile instead")
@@ -3139,27 +3155,27 @@ class openpylivox(object):
                         firmwareType = 1
 
                     if duration < 0:
-                        if self._showMessages: print(
+                        if self._showMessages: logger.warning(
                             "   " + self._sensorIP + self._format_spaces + "   -->     * ISSUE: saving data, negative duration")
                     else:
                         # max duration = 4 years - 1 sec
                         if duration >= 126230400:
-                            if self._showMessages: print(
+                            if self._showMessages: logger.warning(
                                 "   " + self._sensorIP + self._format_spaces + "   -->     * ISSUE: saving data, duration too big")
                         else:
 
                             if secsToWait < 0:
-                                if self._showMessages: print(
+                                if self._showMessages: logger.warning(
                                     "   " + self._sensorIP + self._format_spaces + "   -->     * ISSUE: saving data, negative time to wait")
                             else:
                                 # max time to wait = 15 mins
                                 if secsToWait > 900:
-                                    if self._showMessages: print(
+                                    if self._showMessages: logger.warning(
                                         "   " + self._sensorIP + self._format_spaces + "   -->     * ISSUE: saving data, time to wait too big")
                                 else:
 
                                     if filePathAndName == "":
-                                        if self._showMessages: print(
+                                        if self._showMessages: logger.warning(
                                             "   " + self._sensorIP + self._format_spaces + "   -->     * ISSUE: saving data, file path and name missing")
                                     else:
 
@@ -3172,9 +3188,9 @@ class openpylivox(object):
                                         time.sleep(0.1)
                                         self._captureStream.isCapturing = True
                 else:
-                    if self._showMessages: print("   " + self._sensorIP + self._format_spaces + "   -->     unknown firmware version")
+                    if self._showMessages: logger.warning("   " + self._sensorIP + self._format_spaces + "   -->     unknown firmware version")
             else:
-                if self._showMessages: print(
+                if self._showMessages: logger.warning(
                     "   " + self._sensorIP + self._format_spaces + "   -->     WARNING: data stream not started, no data file created")
 
     def saveDataToFile(self, filePathAndName, secsToWait, duration):
@@ -3235,39 +3251,39 @@ class openpylivox(object):
             imuPorts.append(params[4])
 
         if self._showMessages:
-            print("      Computer IP Address:    " + params[0])
-            print("      Sensor IP Address(es):  " + str(sensorIPs))
-            print("      Data Port Number(s):    " + str(dataPorts))
-            print("      Command Port Number(s): " + str(cmdPorts))
+            logger.info("      Computer IP Address:    " + params[0])
+            logger.info("      Sensor IP Address(es):  " + str(sensorIPs))
+            logger.info("      Data Port Number(s):    " + str(dataPorts))
+            logger.info("      Command Port Number(s): " + str(cmdPorts))
             if self._deviceType == "Horizon" or self._deviceType == "Tele-15":
-                print("      IMU Port Number(s):     " + str(imuPorts))
+                logger.info("      IMU Port Number(s):     " + str(imuPorts))
 
         return [params[0], sensorIPs, dataPorts, cmdPorts, imuPorts]
 
     def extrinsicParameters(self):
         if self._isConnected:
             if self._showMessages:
-                print("      x: " + str(self._x) + " m")
-                print("      y: " + str(self._y) + " m")
-                print("      z: " + str(self._z) + " m")
-                print("      roll: " + "{0:.2f}".format(self._roll) + " deg")
-                print("      pitch: " + "{0:.2f}".format(self._pitch) + " deg")
-                print("      yaw: " + "{0:.2f}".format(self._yaw) + " deg")
+                logger.info("      x: " + str(self._x) + " m")
+                logger.info("      y: " + str(self._y) + " m")
+                logger.info("      z: " + str(self._z) + " m")
+                logger.info("      roll: " + "{0:.2f}".format(self._roll) + " deg")
+                logger.info("      pitch: " + "{0:.2f}".format(self._pitch) + " deg")
+                logger.info("      yaw: " + "{0:.2f}".format(self._yaw) + " deg")
 
             return [self._x, self._y, self._z, self._roll, self._pitch, self._yaw]
 
     def firmware(self):
         if self._isConnected:
             if self._showMessages:
-                print("   " + self._sensorIP + self._format_spaces + "   -->     F/W Version: " + self._firmware)
+                logger.info("   " + self._sensorIP + self._format_spaces + "   -->     F/W Version: " + self._firmware)
                 for i in range(len(self._mid100_sensors)):
-                    print("   " + self._mid100_sensors[i]._sensorIP + self._mid100_sensors[i]._format_spaces + "   -->     F/W Version: " + self._mid100_sensors[i]._firmware)
+                    logger.info("   " + self._mid100_sensors[i]._sensorIP + self._mid100_sensors[i]._format_spaces + "   -->     F/W Version: " + self._mid100_sensors[i]._firmware)
 
             return self._firmware
 
     def serialNumber(self):
         if self._isConnected:
-            if self._showMessages: print("   " + self._sensorIP + self._format_spaces + "   -->     Serial # " + self._serial)
+            if self._showMessages: logger.info("   " + self._sensorIP + self._format_spaces + "   -->     Serial # " + self._serial)
 
             return self._serial
 
@@ -3367,35 +3383,35 @@ class openpylivox(object):
                     elif codes[11] == 4:
                         time_sync_mess = "Abnormal time sync."
 
-                    print("      System Status:         " + sys_mess)
-                    print("      Temperature Status:    " + temp_mess)
-                    print("      Voltage Status:        " + volt_mess)
-                    print("      Motor Status:          " + motor_mess)
-                    print("      Clean Status:          " + dirty_mess)
-                    print("      Firmware Status:       " + firmware_mess)
-                    print("      PPS Status:            " + pps_mess)
-                    print("      Device Status:         " + device_mess)
-                    print("      Fan Status:            " + fan_mess)
-                    print("      Self Heating Status:   " + heating_mess)
-                    print("      PTP Status:            " + ptp_mess)
-                    print("      Time Sync. Status:     " + time_sync_mess)
+                    logger.info("      System Status:         " + sys_mess)
+                    logger.info("      Temperature Status:    " + temp_mess)
+                    logger.info("      Voltage Status:        " + volt_mess)
+                    logger.info("      Motor Status:          " + motor_mess)
+                    logger.info("      Clean Status:          " + dirty_mess)
+                    logger.info("      Firmware Status:       " + firmware_mess)
+                    logger.info("      PPS Status:            " + pps_mess)
+                    logger.info("      Device Status:         " + device_mess)
+                    logger.info("      Fan Status:            " + fan_mess)
+                    logger.info("      Self Heating Status:   " + heating_mess)
+                    logger.info("      PTP Status:            " + ptp_mess)
+                    logger.info("      Time Sync. Status:     " + time_sync_mess)
 
                 return codes
 
             else:
                 if self._showMessages:
-                    print("      System Status:         UNKNOWN")
-                    print("      Temperature Status:    UNKNOWN")
-                    print("      Voltage Status:        UNKNOWN")
-                    print("      Motor Status:          UNKNOWN")
-                    print("      Dirty Status:          UNKNOWN")
-                    print("      Firmware Status:       UNKNOWN")
-                    print("      PPS Status:            UNKNOWN")
-                    print("      Device Status:         UNKNOWN")
-                    print("      Fan Status:            UNKNOWN")
-                    print("      Self Heating Status:   UNKNOWN")
-                    print("      PTP Status:            UNKNOWN")
-                    print("      Time Sync. Status:     UNKNOWN")
+                    logger.info("      System Status:         UNKNOWN")
+                    logger.info("      Temperature Status:    UNKNOWN")
+                    logger.info("      Voltage Status:        UNKNOWN")
+                    logger.info("      Motor Status:          UNKNOWN")
+                    logger.info("      Dirty Status:          UNKNOWN")
+                    logger.info("      Firmware Status:       UNKNOWN")
+                    logger.info("      PPS Status:            UNKNOWN")
+                    logger.info("      Device Status:         UNKNOWN")
+                    logger.info("      Fan Status:            UNKNOWN")
+                    logger.info("      Self Heating Status:   UNKNOWN")
+                    logger.info("      PTP Status:            UNKNOWN")
+                    logger.info("      Time Sync. Status:     UNKNOWN")
 
                 return [-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1]
 
@@ -3455,7 +3471,7 @@ def _convertBin2CSV(filePathAndName, deleteBin):
 
                     if firmwareType >= 1 and firmwareType <= 3:
                         if dataType >= 0 and dataType <= 5:
-                            print("CONVERTING OPL BINARY DATA, PLEASE WAIT...")
+                            logger.info("CONVERTING OPL BINARY DATA, PLEASE WAIT...")
                             if firmwareType == 1 and dataType == 0:
                                 csvFile.write("//X,Y,Z,Inten-sity,Time,ReturnNum\n")
                                 dataClass = 1
@@ -3641,17 +3657,16 @@ def _convertBin2CSV(filePathAndName, deleteBin):
 
                             pbari.close()
                             binFile.close()
-                            print("   - Point data was converted successfully to CSV, see file: " + str(parent / filename))
+                            logger.info("   - Point data was converted successfully to CSV, see file: " + str(parent / filename))
                             if deleteBin:
                                 os.remove(filePathAndName)
-                                print("     * OPL point data binary file has been deleted")
-                            print()
+                                logger.warning("     * OPL point data binary file has been deleted")
                             time.sleep(0.5)
                         else:
-                            print("*** ERROR: The OPL point data binary file reported a wrong data type ***")
+                            logger.error("*** ERROR: The OPL point data binary file reported a wrong data type ***")
                             binFile.close()
                     else:
-                        print("*** ERROR: The OPL point data binary file reported a wrong firmware type ***")
+                        logger.error("*** ERROR: The OPL point data binary file reported a wrong firmware type ***")
                         binFile.close()
 
                 # check for and convert IMU BIN data (if it exists)
@@ -3692,23 +3707,22 @@ def _convertBin2CSV(filePathAndName, deleteBin):
 
                             pbari2.close()
                             binFile2.close()
-                            print("   - IMU data was converted successfully to CSV, see file: " + str(csv_file) + ".csv")
+                            logger.info("   - IMU data was converted successfully to CSV, see file: " + str(csv_file) + ".csv")
                             if deleteBin:
                                 os.remove(IMU_file)
-                                print("     * OPL IMU data binary file has been deleted")
+                                logger.warning("     * OPL IMU data binary file has been deleted")
                     else:
-                        print("*** ERROR: The file was not recognized as an OpenPyLivox binary IMU data file ***")
+                        logger.error("*** ERROR: The file was not recognized as an OpenPyLivox binary IMU data file ***")
                         binFile2.close()
             else:
-                print("*** ERROR: The file was not recognized as an OpenPyLivox binary point data file ***")
+                logger.error("*** ERROR: The file was not recognized as an OpenPyLivox binary point data file ***")
                 binFile.close()
     except Exception as err:
         binFile.close()
-        print("*** ERROR: An unknown error occurred while converting OPL binary data ***")
-        print(err)
+        logger.error("*** ERROR: An unknown error occurred while converting OPL binary data ***")
+        logger.error(err)
 
 def convertBin2CSV(filePathAndName, deleteBin=False):
-    print()
     path_file = Path(filePathAndName)
     filename = path_file.stem
     exten = path_file.suffix
@@ -3744,7 +3758,7 @@ def _convertBin2LAS(filePathAndName, deleteBin):
                 if firmwareType >= 1 and firmwareType <= 3:
                     #LAS file creation only works with Cartesian data types (decided not to convert spherical obs.)
                     if dataType == 0 or dataType == 2 or dataType == 4:
-                        print("CONVERTING OPL BINARY DATA, PLEASE WAIT...")
+                        logger.info("CONVERTING OPL BINARY DATA, PLEASE WAIT...")
 
                         coord1s = []
                         coord2s = []
@@ -3870,17 +3884,16 @@ def _convertBin2LAS(filePathAndName, deleteBin):
 
                         pbari.close()
                         binFile.close()
-                        print("   - Point data was converted successfully to LAS, see file: " + filePathAndName + ".las")
+                        logger.info("   - Point data was converted successfully to LAS, see file: " + filePathAndName + ".las")
                         if deleteBin:
                             os.remove(filePathAndName)
-                            print("     * OPL point data binary file has been deleted")
-                        print()
+                            logger.warning("     * OPL point data binary file has been deleted")
                         time.sleep(0.5)
                     else:
-                        print("*** ERROR: Only Cartesian point data can be converted to an LAS file ***")
+                        logger.error("*** ERROR: Only Cartesian point data can be converted to an LAS file ***")
                         binFile.close()
                 else:
-                    print("*** ERROR: The OPL point data binary file reported a wrong firmware type ***")
+                    logger.error("*** ERROR: The OPL point data binary file reported a wrong firmware type ***")
                     binFile.close()
 
                 # check for and convert IMU BIN data (if it exists)
@@ -3919,22 +3932,21 @@ def _convertBin2LAS(filePathAndName, deleteBin):
 
                             pbari2.close()
                             binFile2.close()
-                            print("   - IMU data was converted successfully to CSV, see file: " + IMU_file + ".csv")
+                            logger.info("   - IMU data was converted successfully to CSV, see file: " + IMU_file + ".csv")
                             if deleteBin:
                                 os.remove(IMU_file)
-                                print("     * OPL IMU data binary file has been deleted")
+                                logger.warning("     * OPL IMU data binary file has been deleted")
                     else:
-                        print("*** ERROR: The file was not recognized as an OpenPyLivox binary IMU data file ***")
+                        logger.error("*** ERROR: The file was not recognized as an OpenPyLivox binary IMU data file ***")
                         binFile2.close()
             else:
-                print("*** ERROR: The file was not recognized as an OpenPyLivox binary point data file ***")
+                logger.error("*** ERROR: The file was not recognized as an OpenPyLivox binary point data file ***")
                 binFile.close()
     except:
         binFile.close()
-        print("*** ERROR: An unknown error occurred while converting OPL binary data ***")
+        logger.error("*** ERROR: An unknown error occurred while converting OPL binary data ***")
 
 def convertBin2LAS(filePathAndName, deleteBin=False):
-    print()
     path_file = Path(filePathAndName)
     filename = path_file.stem
     exten = path_file.suffix
