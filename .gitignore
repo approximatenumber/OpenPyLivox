@@ -1,0 +1,4 @@
+build/
+dist/
+openpylivox/__pycache__/
+openpylivox_pkg.egg-info/
