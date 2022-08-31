@@ -124,7 +124,7 @@ class _heartbeatThread(object):
 
 class _dataCaptureThread(object):
 
-    def __init__(self, sensorIP, data_socket, imu_socket, filePathAndName, fileType, secsToWait, duration, firmwareType, showMessages, format_spaces, deviceType):
+    def __init__(self, sensorIP, data_socket, imu_socket, filePathAndName, fileType, secsToWait, duration, firmwareType, showMessages, format_spaces, deviceType, convert_to_csv=True):
 
         self.startTime = -1
         self.sensorIP = sensorIP
@@ -157,6 +157,7 @@ class _dataCaptureThread(object):
         self.self_heating_status = -1
         self.ptp_status = -1
         self.time_sync_status = -1
+        self.convert_to_csv = convert_to_csv
 
         if duration == 0:
             self.duration = 126230400  # 4 years of time (so technically not indefinite)
@@ -1374,8 +1375,8 @@ class _dataCaptureThread(object):
                                         path_file = Path(self.filePathAndName)
                                         exten = path_file.suffix
                                         filename = path_file.stem + "_IMU" + exten
-                                        IMU_file = open(path_file.parent / filename, "wb")
-                                        IMU_file = open(filename + "_IMU" + exten, "wb")
+                                        IMU_filepath = path_file.parent / filename
+                                        IMU_file = open(IMU_filepath, "wb")
                                         IMU_file.write(str.encode("OPENPYLIVOX_IMU"))
                                         logger.debug("   " + self.sensorIP + self._format_spaces + "   -->     create IMU BINARY file: " + str(path_file.parent / filename))
 
@@ -1403,9 +1404,14 @@ class _dataCaptureThread(object):
                         logger.debug("                                (IMU records: " + str(imu_records) + ")")
 
                 binFile.close()
+                
+                if self.convert_to_csv:
+                    convertBin2CSV(self.filePathAndName, deleteBin=True)
 
                 if IMU_reporting:
                     IMU_file.close()
+                    if self.convert_to_csv:
+                        convertBin2CSV(IMU_filepath, deleteBin=True)
 
             else:
                 if self._showMessages: logger.warning("   " + self.sensorIP + self._format_spaces + "   -->     Incorrect packet version")
@@ -2361,7 +2367,7 @@ class openpylivox(object):
             if stopper:
                 if self._showMessages: logger.info("   " + self._sensorIP + self._format_spaces + "   -->     lidar is ready")
                 for i in range(len(self._mid100_sensors)):
-                    if self._mid100_sensors[i]._showMessages: loger.info("   " + self._mid100_sensors[i]._sensorIP + self._mid100_sensors[i]._format_spaces + "   -->     lidar is ready")
+                    if self._mid100_sensors[i]._showMessages: logger.info("   " + self._mid100_sensors[i]._sensorIP + self._mid100_sensors[i]._format_spaces + "   -->     lidar is ready")
                 time.sleep(0.1)
                 break
 
@@ -3434,17 +3440,6 @@ class openpylivox(object):
 
         return all(stop)
 
-def allDoneCapturing(sensors):
-    stop = []
-    for i in range(0, len(sensors)):
-        if sensors[i]._captureStream is not None:
-            stop.append(sensors[i].doneCapturing())
-
-    # small sleep to ensure this command isn't continuously called if in a while True loop
-    time.sleep(0.01)
-    return all(stop)
-
-
 def _convertBin2CSV(filePathAndName, deleteBin):
 
     binFile = None
@@ -3471,7 +3466,7 @@ def _convertBin2CSV(filePathAndName, deleteBin):
 
                     if firmwareType >= 1 and firmwareType <= 3:
                         if dataType >= 0 and dataType <= 5:
-                            logger.info("CONVERTING OPL BINARY DATA, PLEASE WAIT...")
+                            logger.debug("CONVERTING OPL BINARY DATA, PLEASE WAIT...")
                             if firmwareType == 1 and dataType == 0:
                                 csvFile.write("//X,Y,Z,Inten-sity,Time,ReturnNum\n")
                                 dataClass = 1
@@ -3506,7 +3501,11 @@ def _convertBin2CSV(filePathAndName, deleteBin):
                                 divisor = 24
 
                             num_recs = int(bin_size / divisor)
-                            pbari = tqdm(total=num_recs, unit=" pts", desc="   ")
+                            pbari = tqdm(
+                                total=num_recs,
+                                unit=" records",
+                                desc="   ",
+                                disable=True if logger.level != logging.DEBUG else False)
 
                             while True:
                                 try:
@@ -3586,7 +3585,7 @@ def _convertBin2CSV(filePathAndName, deleteBin):
                                         csvFile.write("{0:.3f}".format(coord1) + "," + "{0:.2f}".format(
                                             coord2) + "," + "{0:.2f}".format(coord3) + "," + str(
                                             intensity) + "," + "{0:.6f}".format(timestamp_sec) + ",1," + returnType + ","
-                                                      + spatial_conf + "," + intensity_conf + "\n")
+                                                    + spatial_conf + "," + intensity_conf + "\n")
 
                                     # Horizon/Tele-15 Cartesian dual return (SDK Data Type 4)
                                     elif dataClass == 7:
@@ -3613,12 +3612,12 @@ def _convertBin2CSV(filePathAndName, deleteBin):
                                         csvFile.write("{0:.3f}".format(coord1a) + "," + "{0:.3f}".format(
                                             coord2a) + "," + "{0:.3f}".format(coord3a) + "," + str(
                                             intensitya) + "," + "{0:.6f}".format(timestamp_sec) + ",1," + returnTypea + ","
-                                                      + spatial_confa + "," + intensity_confa + "\n")
+                                                    + spatial_confa + "," + intensity_confa + "\n")
 
                                         csvFile.write("{0:.3f}".format(coord1b) + "," + "{0:.3f}".format(
                                             coord2b) + "," + "{0:.3f}".format(coord3b) + "," + str(
                                             intensityb) + "," + "{0:.6f}".format(timestamp_sec) + ",2," + returnTypeb + ","
-                                                      + spatial_confb + "," + intensity_confb + "\n")
+                                                    + spatial_confb + "," + intensity_confb + "\n")
 
                                     # Horizon/Tele-15 Spherical dual return (SDK Data Type 5)
                                     elif dataClass == 8:
@@ -3643,12 +3642,12 @@ def _convertBin2CSV(filePathAndName, deleteBin):
                                         csvFile.write("{0:.3f}".format(coord1a) + "," + "{0:.2f}".format(
                                             coord2) + "," + "{0:.2f}".format(coord3) + "," + str(
                                             intensitya) + "," + "{0:.6f}".format(timestamp_sec) + ",1," + returnTypea + ","
-                                                      + spatial_confa + "," + intensity_confa + "\n")
+                                                    + spatial_confa + "," + intensity_confa + "\n")
 
                                         csvFile.write("{0:.3f}".format(coord1b) + "," + "{0:.2f}".format(
                                             coord2) + "," + "{0:.2f}".format(coord3) + "," + str(
                                             intensityb) + "," + "{0:.6f}".format(timestamp_sec) + ",2," + returnTypeb + ","
-                                                      + spatial_confb + "," + intensity_confb + "\n")
+                                                    + spatial_confb + "," + intensity_confb + "\n")
 
                                     pbari.update(1)
 
@@ -3686,7 +3685,11 @@ def _convertBin2CSV(filePathAndName, deleteBin):
                     if checkMessage == "OPENPYLIVOX_IMU":
                         with open(csv_file, "w", 1) as csvFile2:
                             csvFile2.write("//gyro_x,gyro_y,gyro_z,acc_x,acc_y,acc_z,time\n")
-                            pbari2 = tqdm(total=num_recs, unit=" records", desc="   ")
+                            pbari2 = tqdm(
+                                total=num_recs,
+                                unit=" records",
+                                desc="   ",
+                                disable=True if logger.level != logging.DEBUG else False)
                             while True:
                                 try:
                                     gyro_x = "{0:.6f}".format(struct.unpack('<f', binFile2.read(4))[0])
@@ -3758,7 +3761,7 @@ def _convertBin2LAS(filePathAndName, deleteBin):
                 if firmwareType >= 1 and firmwareType <= 3:
                     #LAS file creation only works with Cartesian data types (decided not to convert spherical obs.)
                     if dataType == 0 or dataType == 2 or dataType == 4:
-                        logger.info("CONVERTING OPL BINARY DATA, PLEASE WAIT...")
+                        logger.debug("CONVERTING OPL BINARY DATA, PLEASE WAIT...")
 
                         coord1s = []
                         coord2s = []
@@ -3959,3 +3962,13 @@ def convertBin2LAS(filePathAndName, deleteBin=False):
 
     if os.path.isfile(filename + "_R" + exten):
         _convertBin2LAS(filename + "_R" + exten, deleteBin)
+
+def allDoneCapturing(sensors):
+    stop = []
+    for i in range(0, len(sensors)):
+        if sensors[i]._captureStream is not None:
+            stop.append(sensors[i].doneCapturing())
+
+    # small sleep to ensure this command isn't continuously called if in a while True loop
+    time.sleep(0.01)
+    return all(stop)
