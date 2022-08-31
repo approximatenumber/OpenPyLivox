@@ -40,27 +40,6 @@ from tqdm import tqdm
 import laspy
 from deprecated import deprecated
 import logging
-import colorlog
-
-
-class Logger:
-    format = '%(log_color)s%(asctime)s %(levelname)s %(filename)s [line %(lineno)s]: %(message)s'
-    datefmt = "%d/%m %H:%M:%S"
-    formatter = colorlog.ColoredFormatter(format, datefmt=datefmt)
-    handler = logging.StreamHandler()
-    handler.setFormatter(formatter)
-
-    @classmethod
-    def get_logger(cls, name, loglevel=logging.INFO):
-        logger = logging.getLogger(name)
-        logger.addHandler(cls.handler)
-        logger.setLevel(loglevel)
-        logger.propagate = False  # See: https://stackoverflow.com/questions/6729268/log-messages-appearing-twice-with-python-logging
-        return logger
-
-
-logger = Logger.get_logger("dataset-recorder")
-
 
 class _heartbeatThread(object):
 
@@ -1532,7 +1511,7 @@ class openpylivox(object):
                                    "03.03.0006": 2,
                                    "03.03.0007": 3}
 
-    def __init__(self, showMessages=False):
+    def __init__(self, showMessages=False, logger=logging.getLogger()):
 
         self._isConnected = False
         self._isData = False
