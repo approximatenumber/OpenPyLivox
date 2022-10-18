@@ -43,7 +43,7 @@ import logging
 
 class _heartbeatThread(object):
 
-    def __init__(self, interval, transmit_socket, send_to_IP, send_to_port, send_command, showMessages, format_spaces):
+    def __init__(self, interval, transmit_socket, send_to_IP, send_to_port, send_command, showMessages, format_spaces, logger=logging.getLogger('opl')):
         self.interval = interval
         self.IP = send_to_IP
         self.port = send_to_port
@@ -54,6 +54,7 @@ class _heartbeatThread(object):
         self.idle_state = 0
         self._showMessages = showMessages
         self._format_spaces = format_spaces
+        self.logger = logger
 
         self.thread = threading.Thread(target=self.run, args=())
         self.thread.daemon = True
@@ -73,21 +74,21 @@ class _heartbeatThread(object):
                     if ack == "ACK (response)" and cmd_set == "General" and cmd_id == "3":
                         ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
                         if ret_code != 0:
-                            if self._showMessages: logger.warning("   " + self.IP + self._format_spaces + self._format_spaces + "   -->     incorrect heartbeat response")
+                            if self._showMessages: self.logger.warning("   " + self.IP + self._format_spaces + self._format_spaces + "   -->     incorrect heartbeat response")
                         else:
                             self.work_state = int.from_bytes(ret_code_bin[1], byteorder='little')
 
                             # TODO: read and store the lidar status codes from heartbeat response (right now only being read from data stream)
 
                             if self.work_state == 4:
-                                logger.error("   " + self.IP + self._format_spaces + self._format_spaces + "   -->     *** ERROR: HEARTBEAT ERROR MESSAGE RECEIVED ***")
+                                self.logger.error("   " + self.IP + self._format_spaces + self._format_spaces + "   -->     *** ERROR: HEARTBEAT ERROR MESSAGE RECEIVED ***")
                                 sys.exit(0)
                     elif ack == "MSG (message)" and cmd_set == "General" and cmd_id == "7":
                         # not given an option to hide this message!!
-                        logger.error("   " + self.IP + self._format_spaces + self._format_spaces + "   -->     *** ERROR: ABNORMAL STATUS MESSAGE RECEIVED ***")
+                        self.logger.error("   " + self.IP + self._format_spaces + self._format_spaces + "   -->     *** ERROR: ABNORMAL STATUS MESSAGE RECEIVED ***")
                         sys.exit(1)
                     else:
-                        if self._showMessages: logger.warning("   " + self.IP + self._format_spaces + self._format_spaces + "   -->     incorrect heartbeat response")
+                        if self._showMessages: self.logger.warning("   " + self.IP + self._format_spaces + self._format_spaces + "   -->     incorrect heartbeat response")
 
                 for i in range(9, -1, -1):
                     self.idle_state = i
@@ -1542,7 +1543,7 @@ class openpylivox(object):
         self._deviceType = "UNKNOWN"
         self._mid100_sensors = []
         self._format_spaces = ""
-        self.logger=logger
+        self.logger = logger
 
     def _reinit(self):
 
@@ -2096,7 +2097,7 @@ class openpylivox(object):
                         ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
                         if ret_code == 0:
                             self._isConnected = True
-                            self._heartbeat = _heartbeatThread(1, self._cmdSocket, self._sensorIP, 65000, self._CMD_HEARTBEAT, self._showMessages, self._format_spaces)
+                            self._heartbeat = _heartbeatThread(1, self._cmdSocket, self._sensorIP, 65000, self._CMD_HEARTBEAT, self._showMessages, self._format_spaces, logger=self.logger)
                             time.sleep(0.15)
                             self._query()
                             if self._showMessages: self.logger.info(
