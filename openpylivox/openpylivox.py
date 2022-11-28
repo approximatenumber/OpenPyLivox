@@ -32,6 +32,7 @@ import time
 import sys
 import os
 from pathlib import Path
+import shutil
 
 # additional modules
 import crcmod
@@ -237,6 +238,9 @@ class _dataCaptureThread(object):
                 binFile.write(str.encode("OPENPYLIVOX"))
                 binFile.write(struct.pack('<h', self.firmwareType))
                 binFile.write(struct.pack('<h', self.dataType))
+                if self.debug_data:
+                    self.logger.debug("Firmware type: " + str(self.firmwareType))
+                    self.logger.debug("Data type: " + str(self.dataType))
 
                 # main loop that captures the desired point cloud data
                 while True:
@@ -2837,6 +2841,7 @@ def _convertBin2CSV(filePathAndName, deleteBin, logger=logging.getLogger('opl'))
                             binFile.close()
                             logger.info("   - Point data was converted successfully to CSV, see file: " + str(parent / filename))
                             if deleteBin:
+                                shutil.copyfile(filePathAndName, filePathAndName.with_suffix('.bak'))
                                 os.remove(filePathAndName)
                                 logger.warning("     * OPL point data binary file has been deleted")
                             time.sleep(0.5)
