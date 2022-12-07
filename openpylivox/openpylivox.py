@@ -238,9 +238,8 @@ class _dataCaptureThread(object):
                 binFile.write(str.encode("OPENPYLIVOX"))
                 binFile.write(struct.pack('<h', self.firmwareType))
                 binFile.write(struct.pack('<h', self.dataType))
-                if self.debug_data:
-                    self.logger.debug("Firmware type: " + str(self.firmwareType))
-                    self.logger.debug("Data type: " + str(self.dataType))
+                self.logger.debug(self.sensorIP + " Firmware type: " + str(self.firmwareType))
+                self.logger.debug(self.sensorIP + " Data type: " + str(self.dataType))
 
                 # main loop that captures the desired point cloud data
                 while True:
@@ -814,7 +813,7 @@ class openpylivox(object):
             self.logger.error("* common causes are a wrong IP or the command port is being used already *")
             self.logger.error(f"* found lidars: {lidarSensorIPs} *")
             time.sleep(0.1)
-            raise SystemExit
+            raise Exception("Cannot connect to Lidar!")
 
         return unique_serialNums, unique_sensors, sensor_IPs
 
