@@ -270,8 +270,50 @@ class _dataCaptureThread(object):
                                 # Horizon and Tele-15 sensors also fall under this 'if' statement
                                 if self.firmwareType == 1:
 
+                                    ################# AVIA ###########################################
+                                    
+                                    # AVIA case:
+                                    # triple return
+                                    # cartesian
+                                
+                                    if dataType == 7:
+                                        # to account for first point's timestamp being increment in the loop
+                                        timestamp_sec -= 0.000016667
+
+                                        # Cartesian Coordinate System
+                                        for i in range(0, 100):
+                                            returnNum = 1
+
+                                            # Y coordinate (check for non-zero)
+                                            coord2 = struct.unpack('<i', data_pc[bytePos + 4:bytePos + 8])[0]
+
+                                            zeroORoneORtwo = i % 3
+
+                                            # timestamp
+                                            timestamp_sec += float(not (zeroORoneORtwo)) * 0.000016666
+
+                                            # return number
+                                            returnNum += zeroORoneORtwo * 1
+
+                                            if deviceCheck == 100:
+                                                numPts += 1
+                                                binFile.write(data_pc[bytePos:bytePos + 13])
+                                                binFile.write(struct.pack('<d', timestamp_sec))
+                                                binFile.write(str.encode(str(returnNum)))
+                                            else:
+                                                if coord2:
+                                                    numPts += 1
+                                                    binFile.write(data_pc[bytePos:bytePos + 13])
+                                                    binFile.write(struct.pack('<d', timestamp_sec))
+                                                    binFile.write(str.encode(str(returnNum)))
+                                                else:
+                                                    nullPts += 1
+
+                                            bytePos += 13
+                                    ######################################################################################
+
                                     # Cartesian Coordinate System
-                                    if dataType == 0:
+                                    elif dataType == 0:
                                         # to account for first point's timestamp being increment in the loop
                                         timestamp_sec -= 0.00001
 
@@ -298,7 +340,7 @@ class _dataCaptureThread(object):
                                             bytePos += 13
 
                                     # Spherical Coordinate System
-                                    elif dataType == 1 or dataType == 7:
+                                    elif dataType == 1:
                                         # to account for first point's timestamp being increment in the loop
                                         timestamp_sec -= 0.00001
 
