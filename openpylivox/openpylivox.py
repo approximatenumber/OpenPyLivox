@@ -32,7 +32,6 @@ import time
 import sys
 import os
 from pathlib import Path
-import shutil
 
 # additional modules
 import crcmod
@@ -273,10 +272,10 @@ class _dataCaptureThread(object):
                                     ################# AVIA ###########################################
                                     
                                     # AVIA case:
-                                    # triple return
+                                    # dual return
                                     # cartesian
                                 
-                                    if dataType == 7:
+                                    if dataType == 4:
                                         # to account for first point's timestamp being increment in the loop
                                         timestamp_sec -= 0.000016667
 
@@ -976,7 +975,7 @@ class openpylivox(object):
 
         except socket.error as err:
             self.logger.error(" *** ERROR: cannot bind to specified IP:Port(s), " + err)
-            sys.exit(3)
+            raise Exception("Cannot connect to Lidar!")
 
     def _waitForIdle(self):
 
@@ -2882,7 +2881,6 @@ def _convertBin2CSV(filePathAndName, deleteBin, logger=logging.getLogger('opl'))
                             binFile.close()
                             logger.info("   - Point data was converted successfully to CSV, see file: " + str(parent / filename))
                             if deleteBin:
-                                shutil.copyfile(filePathAndName, filePathAndName.with_suffix('.bak'))
                                 os.remove(filePathAndName)
                                 logger.warning("     * OPL point data binary file has been deleted")
                             time.sleep(0.5)
